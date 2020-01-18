@@ -5,7 +5,6 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
-	"github.com/t-tiger/gorm-bulk-insert"
 	"io"
 	"log"
 	"net/http"
@@ -24,14 +23,33 @@ func main() {
 		panic(err)
 	}
 
-	indexItems, err := getList(body, baseURL)
+	indexItem, err := getList(body, baseURL)
 	if err != nil {
 		panic(err)
 	}
 
-	err = registerCurrentData(indexItems, db)
-	if err != nil {
-		panic(err)
+	for _, item := range indexItem {
+		var oldItem IndexItem
+		err := db.First(&oldItem, "url = ?", item.Url).Error
+
+		if err != nil {
+			// insert
+			log.Println(fmt.Sprintf("New record: %s(%s)", item.Name, item.Url))
+			err := db.Create(&item).Error
+			if err != nil {
+				log.Println("Insert record error has occurred: ", err)
+			}
+		} else if !item.equals(oldItem) {
+			// update
+			log.Println(fmt.Sprintf("Update record: %s(%s)", item.Name, item.Url))
+			err = db.Model(&oldItem).Updates(item).Error
+			if err != nil {
+				log.Println("update record error has occurred: ", err)
+			}
+		} else {
+			// no change
+			log.Println(fmt.Sprintf("No change: %s(%s)", item.Name, item.Url))
+		}
 	}
 }
 
@@ -47,7 +65,7 @@ func gormConnect() *gorm.DB {
 		panic(err.Error())
 	}
 
-	db.AutoMigrate(&ItemMaster{}, &LatestItem{})
+	db.AutoMigrate(&IndexItem{})
 	return db
 }
 
@@ -59,8 +77,8 @@ func getBody(url string) (io.ReadCloser, error) {
 	return res.Body, err
 }
 
-func getList(body io.ReadCloser, baseURL string) ([]Item, error) {
-	var itemList []Item
+func getList(body io.ReadCloser, baseURL string) ([]IndexItem, error) {
+	var itemList []IndexItem
 
 	doc, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
@@ -68,7 +86,7 @@ func getList(body io.ReadCloser, baseURL string) ([]Item, error) {
 	}
 
 	doc.Find("table tr").Each(func(_ int, s *goquery.Selection) {
-		item := Item{}
+		item := IndexItem{}
 		item.Name = s.Find("td:nth-of-type(2) a").Text()
 		item.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(s.Find("td:nth-of-type(3)").Text(), ",", ""), "円", ""))
 		uri, _ := s.Find("td:nth-of-type(2) a").Attr("href")
@@ -78,21 +96,4 @@ func getList(body io.ReadCloser, baseURL string) ([]Item, error) {
 		}
 	})
 	return itemList, err
-}
-
-func registerCurrentData(items []Item, db *gorm.DB) error {
-	db.Exec("TRUNCATE " + db.NewScope(&LatestItem{}).TableName())
-
-	var insertRecords []interface{}
-	for _, item := range items {
-		insertRecords = append(insertRecords, LatestItem{Item: item})
-	}
-
-	err := gormbulk.BulkInsert(db, insertRecords, 2000)
-
-	if err != nil {
-		return err
-	}
-
-	return err
 }
