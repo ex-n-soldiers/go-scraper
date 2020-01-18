@@ -1,14 +1,26 @@
 package main
 
-import "github.com/jinzhu/gorm"
+import (
+	"github.com/jinzhu/gorm"
+	"time"
+)
 
-type IndexItem struct {
-	gorm.Model
+type Item struct {
 	Name string `gorm:"not null"`
 	Price int
-	Url string
+	Url string `gorm:"unique_index"`
 }
 
-func (orgItem *IndexItem) equals(targetItem IndexItem) bool {
-	return orgItem.Name == targetItem.Name && orgItem.Price == targetItem.Price && orgItem.Url == targetItem.Url
+type LatestItem struct {
+	Item
+	CreatedAt time.Time
+}
+
+type ItemMaster struct {
+	gorm.Model
+	Item
+}
+
+func (ItemMaster) TableName() string {
+	return "item_master"
 }
