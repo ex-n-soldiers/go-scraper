@@ -97,20 +97,36 @@ func registerCurrentData(items []Item, db *gorm.DB) error {
 }
 
 func updateItemMaster(db *gorm.DB) error {
-	// Upsert
-	var latestItems []LatestItem
-	db.Find(&latestItems)
-	for _, latestItem := range latestItems {
-		var itemMaster ItemMaster
-		err := db.Where(ItemMaster{Item: Item{Url: latestItem.Url}}).Assign(ItemMaster{Item: latestItem.Item}).FirstOrCreate(&itemMaster).Error
+	// Insert
+	var newItems []LatestItem
+	err := db.Unscoped().Joins("left join item_master on latest_items.url = item_master.url").Where("item_master.name is null").Find(&newItems).Error
+	if err != nil {
+		return err
+	}
+
+	var insertRecords []interface{}
+	for _, newItem := range newItems {
+		insertRecords = append(insertRecords, ItemMaster{Item: newItem.Item})
+	}
+	err = gormbulk.BulkInsert(db, insertRecords, 2000)
+	if err != nil {
+		return err
+	}
+
+	// Update
+	var updatedItems []LatestItem
+	err = db.Unscoped().Joins("inner join item_master on latest_items.url = item_master.url").Where("latest_items.name <> item_master.name or latest_items.price <> item_master.price or item_master.deleted_at is not null").Find(&updatedItems).Error
+	if err != nil {
+		return err
+	}
+	for _, updatedItem := range updatedItems {
+		err := db.Unscoped().Model(ItemMaster{}).Where("url = ?", updatedItem.Url).Updates(map[string]interface{}{"nam": updatedItem.Name, "price": updatedItem.Price, "deleted_at": nil}).Error
 		if err != nil {
 			return err
 		}
 	}
 
 	// Delete
-	err := db.Exec("delete im from " + db.NewScope(&LatestItem{}).TableName() + " im " +
-		"left join " + db.NewScope(&LatestItem{}).TableName() + " li on li.url = im.url " +
-		"where li.name is null").Error
+	err = db.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Delete(&ItemMaster{}).Error
 	return err
 }
