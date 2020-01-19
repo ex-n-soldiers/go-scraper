@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -24,17 +25,23 @@ func main() {
 		panic(err)
 	}
 
-	indexItems, err := getList(body, baseURL)
+	items, err := getList(body, baseURL)
 	if err != nil {
 		panic(err)
 	}
 
-	err = registerCurrentData(indexItems, db)
+	err = registerCurrentData(items, db)
 	if err != nil {
 		panic(err)
 	}
 
 	err = updateItemMaster(db)
+	if err != nil {
+		panic(err)
+	}
+
+	durationDays := 5
+	err = fetchDetailPages(db, durationDays)
 	if err != nil {
 		panic(err)
 	}
@@ -65,7 +72,7 @@ func getBody(url string) (io.ReadCloser, error) {
 }
 
 func getList(body io.ReadCloser, baseURL string) ([]Item, error) {
-	var itemList []Item
+	var items []Item
 
 	doc, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
@@ -79,10 +86,10 @@ func getList(body io.ReadCloser, baseURL string) ([]Item, error) {
 		uri, _ := s.Find("td:nth-of-type(2) a").Attr("href")
 		item.Url = baseURL + uri
 		if item.Name != "" {
-			itemList = append(itemList, item)
+			items = append(items, item)
 		}
 	})
-	return itemList, err
+	return items, err
 }
 
 func registerCurrentData(items []Item, db *gorm.DB) error {
@@ -129,4 +136,40 @@ func updateItemMaster(db *gorm.DB) error {
 	// Delete
 	err = db.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Delete(&ItemMaster{}).Error
 	return err
+}
+
+func fetchDetailPages(db *gorm.DB, durationDays int) error {
+	var items []ItemMaster
+	err := db.Where("last_checked_at < ?", time.Now().AddDate(0, 0, -durationDays)).Find(&items).Error
+	if err != nil {
+		return err
+	}
+
+	for _, item := range items {
+		body, err := getBody(item.Url)
+		if err != nil {
+			return err
+		}
+
+		itemWithDetails, err := getDetails(body, item)
+		if err != nil {
+			return err
+		}
+
+		err = db.Model(&itemWithDetails).Updates(ItemMaster{Description: itemWithDetails.Description, LastCheckedAt: time.Now()}).Error
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func getDetails(body io.ReadCloser, item ItemMaster) (ItemMaster, error) {
+	doc, err := goquery.NewDocumentFromReader(body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	item.Description = doc.Find("table tr:nth-of-type(2) td:nth-of-type(2)").Text()
+	return item, err
 }
