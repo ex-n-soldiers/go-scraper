@@ -9,23 +9,26 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
+var baseURL = "http://localhost:3000/"
+var downloadBasePath = filepath.Join(".", "work", "downloadFiles")
+
 func main() {
 	db := gormConnect()
 	defer db.Close()
-
-	baseURL := "http://localhost:3000/"
 
 	body, err := getBody(baseURL)
 	if err != nil {
 		panic(err)
 	}
 
-	items, err := getList(body, baseURL)
+	items, err := getList(body)
 	if err != nil {
 		panic(err)
 	}
@@ -71,7 +74,7 @@ func getBody(url string) (io.ReadCloser, error) {
 	return res.Body, err
 }
 
-func getList(body io.ReadCloser, baseURL string) ([]Item, error) {
+func getList(body io.ReadCloser) ([]Item, error) {
 	var items []Item
 
 	doc, err := goquery.NewDocumentFromReader(body)
@@ -156,7 +159,15 @@ func fetchDetailPages(db *gorm.DB, durationDays int) error {
 			return err
 		}
 
-		err = db.Model(&itemWithDetails).Updates(ItemMaster{Description: itemWithDetails.Description, LastCheckedAt: time.Now()}).Error
+		err = db.Model(&itemWithDetails).Updates(ItemMaster{
+			Description: itemWithDetails.Description,
+			LastCheckedAt: time.Now(),
+			ImageUrl: itemWithDetails.ImageUrl,
+			ImageLastModifiedAt: itemWithDetails.ImageLastModifiedAt,
+			ImageDownloadPath: itemWithDetails.ImageDownloadPath,
+			PDFUrl: itemWithDetails.PDFUrl,
+			PDFLastModifiedAt: itemWithDetails.PDFLastModifiedAt,
+			PDFDownloadPath: itemWithDetails.PDFDownloadPath}).Error
 		if err != nil {
 			return err
 		}
@@ -171,5 +182,88 @@ func getDetails(body io.ReadCloser, item ItemMaster) (ItemMaster, error) {
 	}
 
 	item.Description = doc.Find("table tr:nth-of-type(2) td:nth-of-type(2)").Text()
+
+	// Image
+	href, exists := doc.Find("table tr:nth-of-type(1) td:nth-of-type(1) img").Attr("src")
+	imageUrl := baseURL + href
+	isUpdated, currentLastModified := checkFileUpdated(imageUrl, item.ImageLastModifiedAt)
+	if exists && isUpdated {
+		item.ImageUrl = imageUrl
+		item.ImageLastModifiedAt = currentLastModified
+		imageDownloadPath, err := downloadFile(imageUrl, filepath.Join(downloadBasePath, "img", strconv.Itoa(int(item.ID)), item.ImageFileName()))
+		if err != nil {
+			return item, err
+		}
+		item.ImageDownloadPath = imageDownloadPath
+	}
+
+	// PDF
+	href, exists = doc.Find("table tr:nth-of-type(3) td:nth-of-type(2) a").Attr("href")
+	pdfUrl := baseURL + href
+	isUpdated, currentLastModified = checkFileUpdated(pdfUrl, item.PDFLastModifiedAt)
+	if exists && isUpdated {
+		item.PDFUrl = pdfUrl
+		item.PDFLastModifiedAt = currentLastModified
+		pdfDownloadPath, err := downloadFile(pdfUrl, filepath.Join(downloadBasePath, "pdf", strconv.Itoa(int(item.ID)), item.PDFFileName()))
+		if err != nil {
+			return item, err
+		}
+		item.PDFDownloadPath = pdfDownloadPath
+	}
+
 	return item, err
+}
+
+func checkFileUpdated(fileUrl string, lastModified time.Time) (isUpdated bool, currentLastModified time.Time) {
+	currentLastModified, err := getLastModified(fileUrl)
+	if err != nil {
+		return false, currentLastModified
+	}
+
+	if currentLastModified.After(lastModified) {
+		return true, currentLastModified
+	} else {
+		return false, lastModified
+	}
+}
+
+func getLastModified(fileUrl string) (time.Time, error) {
+	res, err := http.Head(fileUrl)
+	if err != nil {
+		return time.Unix(0, 0), err
+	}
+	lastModified, err := time.Parse("Mon, 02 Jan 2006 15:04:05 MST", res.Header.Get("Last-Modified"))
+	return lastModified, err
+}
+
+func downloadFile(url string, downloadPath string) (downloadedPath string, err error) {
+	// Create base directory
+	err = os.MkdirAll(filepath.Dir(downloadPath), 0777)
+	if err != nil {
+		return "", err
+	}
+
+	// Create the file
+	out, err := os.Create(downloadPath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	// Get the data
+	fmt.Println("Download File: " + url)
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	// Write the body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	downloadedPath = downloadPath + filepath.Base(downloadPath)
+	return downloadedPath, nil
 }
