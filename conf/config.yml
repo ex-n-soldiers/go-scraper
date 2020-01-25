@@ -1,0 +1,10 @@
+db:
+  # sample::
+  #   host: "localhost"
+  #   port: "3306"
+  #   dbName: "go-scraper"
+  #   user: "user"
+  #   password: "password"
+  dbName: "go-scraper"
+  user: "user"
+  password: "password"

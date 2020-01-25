@@ -5,6 +5,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
+	"github.com/spf13/viper"
 	"github.com/t-tiger/gorm-bulk-insert"
 	"io"
 	"log"
@@ -17,10 +18,13 @@ import (
 )
 
 var baseURL = "http://localhost:3000/"
-var downloadBasePath = filepath.Join(".", "work", "downloadFiles")
+var currentDirectory, _ = os.Getwd()
+var downloadBasePath = filepath.Join(currentDirectory, "work", "downloadFiles")
 
 func main() {
-	db := gormConnect()
+	config := configure()
+
+	db := gormConnect(config)
 	defer db.Close()
 
 	body, err := getBody(baseURL)
@@ -50,12 +54,12 @@ func main() {
 	}
 }
 
-func gormConnect() *gorm.DB {
-	var dbHost = "localhost"
-	var dbPort = "3306"
-	var dbName = "go-scraper-dev"
-	var dbUser = "root"
-	var dbPassword = "root"
+func gormConnect(config Config) *gorm.DB {
+	var dbHost = config.Db.Host
+	var dbPort = config.Db.Port
+	var dbName = config.Db.DbName
+	var dbUser = config.Db.User
+	var dbPassword = config.Db.Password
 
 	db, err := gorm.Open("mysql", fmt.Sprintf("%s:%s@(%s:%s)/%s?charset=utf8&parseTime=True&loc=Local", dbUser, dbPassword, dbHost, dbPort, dbName))
 	if err != nil {
@@ -266,4 +270,33 @@ func downloadFile(url string, downloadPath string) (downloadedPath string, err e
 
 	downloadedPath = downloadPath + filepath.Base(downloadPath)
 	return downloadedPath, nil
+}
+
+func configure() Config {
+	var config Config
+	viper.SetDefault("db.host", "localhost")
+	viper.SetDefault("db.port", "3306")
+	viper.SetDefault("db.dbName", "go-scraper")
+	viper.SetDefault("db.user", "user")
+	viper.SetDefault("db.password", "password")
+	_, err := os.Stat(filepath.Join(".", "conf", "config-local.yml"))
+	if err == nil {
+		viper.SetConfigName("config-local")
+	} else {
+		viper.SetConfigName("config")
+	}
+	viper.SetConfigType("yml")
+	viper.AddConfigPath(filepath.Join(".", "conf"))
+	viper.AutomaticEnv()
+	if err := viper.ReadInConfig(); err != nil {
+		fmt.Println("Read config file error: ", err)
+		os.Exit(1)
+	}
+
+	if err := viper.Unmarshal(&config); err != nil {
+		fmt.Println("Unmarshal config file error: ", err)
+		os.Exit(1)
+	}
+
+	return config
 }
