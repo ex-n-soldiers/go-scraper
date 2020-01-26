@@ -102,7 +102,7 @@ func getList(body io.ReadCloser) ([]Item, error) {
 			items = append(items, item)
 		}
 	})
-	return items, err
+	return items, nil
 }
 
 func registerCurrentData(items []Item, db *gorm.DB) error {
