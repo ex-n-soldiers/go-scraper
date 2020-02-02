@@ -10,13 +10,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
-var baseURL = "http://localhost:3000/"
 var currentDirectory, _ = os.Getwd()
 var downloadBasePath = filepath.Join(currentDirectory, "work", "downloadFiles")
 
@@ -32,12 +32,12 @@ func main() {
 		panic(err)
 	}
 
-	body, err := getBody(baseURL)
+	response, err := getResponse(config.BaseURL)
 	if err != nil {
 		panic(err)
 	}
 
-	items, err := getList(body)
+	items, err := getList(response)
 	if err != nil {
 		panic(err)
 	}
@@ -73,15 +73,16 @@ func gormConnect(config Config) (*gorm.DB, error) {
 	return db, nil
 }
 
-func getBody(url string) (io.ReadCloser, error) {
-	res, err := http.Get(url)
+func getResponse(url string) (*http.Response, error) {
+	response, err := http.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP Get request error: %v %s %w", res.StatusCode, res.Status, err)
+		return &http.Response{}, fmt.Errorf("HTTP Get request error: %w", err)
 	}
-	return res.Body, nil
+	return response, nil
 }
 
-func getList(body io.ReadCloser) ([]Item, error) {
+func getList(response *http.Response) ([]Item, error) {
+	var body = response.Body
 	var items []Item
 
 	doc, err := goquery.NewDocumentFromReader(body)
@@ -95,7 +96,9 @@ func getList(body io.ReadCloser) ([]Item, error) {
 		item.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(s.Find("td:nth-of-type(3)").Text(), ",", ""), "円", ""))
 		uri, exists := s.Find("td:nth-of-type(2) a").Attr("href")
 		if exists {
-			item.Url = baseURL + uri
+			requestURL := response.Request.URL
+			requestURL.Path = path.Join(response.Request.URL.Path, uri)
+			item.Url = requestURL.String()
 		}
 		if item.Name != "" {
 			items = append(items, item)
@@ -169,12 +172,12 @@ func fetchDetailPages(db *gorm.DB) error {
 	}
 
 	for _, item := range items {
-		body, err := getBody(item.Url)
+		response, err := getResponse(item.Url)
 		if err != nil {
 			return fmt.Errorf("Fetch detail page body error: %w", err)
 		}
 
-		currentItem, err := getDetails(body, item)
+		currentItem, err := getDetails(response, item)
 		if err != nil {
 			return fmt.Errorf("Fetch detail page content error: %w", err)
 		}
@@ -196,7 +199,8 @@ func fetchDetailPages(db *gorm.DB) error {
 	return nil
 }
 
-func getDetails(body io.ReadCloser, item ItemMaster) (ItemMaster, error) {
+func getDetails(response *http.Response, item ItemMaster) (ItemMaster, error) {
+	body := response.Body
 	doc, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
 		return ItemMaster{}, fmt.Errorf("Get detail page document body error %w", err)
@@ -206,7 +210,7 @@ func getDetails(body io.ReadCloser, item ItemMaster) (ItemMaster, error) {
 
 	// Image
 	href, exists := doc.Find("table tr:nth-of-type(1) td:nth-of-type(1) img").Attr("src")
-	imageUrl := baseURL + href
+	imageUrl := path.Join(response.Request.URL.Path, href)
 	isUpdated, currentLastModified := checkFileUpdated(imageUrl, item.ImageLastModifiedAt)
 	if exists && isUpdated {
 		item.ImageUrl = imageUrl
@@ -220,7 +224,7 @@ func getDetails(body io.ReadCloser, item ItemMaster) (ItemMaster, error) {
 
 	// PDF
 	href, exists = doc.Find("table tr:nth-of-type(3) td:nth-of-type(2) a").Attr("href")
-	pdfUrl := baseURL + href
+	pdfUrl := path.Join(response.Request.URL.Path, href)
 	isUpdated, currentLastModified = checkFileUpdated(pdfUrl, item.PDFLastModifiedAt)
 	if exists && isUpdated {
 		item.PDFUrl = pdfUrl
@@ -288,7 +292,7 @@ func downloadFile(url string, downloadPath string) (downloadedPath string, err e
 		return "", fmt.Errorf("Copy file error during download file: %w", err)
 	}
 
-	downloadedPath = downloadPath + filepath.Base(downloadPath)
+	downloadedPath = filepath.Join(downloadPath, filepath.Base(downloadPath))
 	return downloadedPath, nil
 }
 
@@ -299,6 +303,7 @@ func configure() (Config, error) {
 	viper.SetDefault("db.dbName", "go-scraper")
 	viper.SetDefault("db.user", "user")
 	viper.SetDefault("db.password", "password")
+	viper.SetDefault("baseURL", "http://localhost:3000/")
 	_, err := os.Stat(filepath.Join(".", "conf", "config-local.yml"))
 	if err == nil {
 		viper.SetConfigName("config-local")
