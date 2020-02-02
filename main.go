@@ -73,7 +73,7 @@ func gormConnect(config Config) (*gorm.DB, error) {
 func getResponse(url string) (*http.Response, error) {
 	response, err := http.Get(url)
 	if err != nil {
-		return &http.Response{}, fmt.Errorf("HTTP Get request error: %w", err)
+		return nil, fmt.Errorf("HTTP Get request error: %w", err)
 	}
 	return response, nil
 }
