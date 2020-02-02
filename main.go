@@ -9,8 +9,8 @@ import (
 	"github.com/t-tiger/gorm-bulk-insert"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -53,11 +53,11 @@ func main() {
 }
 
 func gormConnect(config Config) (*gorm.DB, error) {
-	var dbHost = config.Db.Host
-	var dbPort = config.Db.Port
-	var dbName = config.Db.DbName
-	var dbUser = config.Db.User
-	var dbPassword = config.Db.Password
+	dbHost := "localhost"
+	dbPort := "3306"
+	dbName := "go-scraper-dev"
+	dbUser := "root"
+	dbPassword := "root"
 
 	db, err := gorm.Open("mysql", fmt.Sprintf("%s:%s@(%s:%s)/%s?charset=utf8&parseTime=True&loc=Local", dbUser, dbPassword, dbHost, dbPort, dbName))
 	if err != nil {
@@ -80,6 +80,7 @@ func getResponse(url string) (*http.Response, error) {
 
 func getList(response *http.Response) ([]Item, error) {
 	body := response.Body
+	requestURL := *response.Request.URL
 	var items []Item
 
 	doc, err := goquery.NewDocumentFromReader(body)
@@ -91,11 +92,10 @@ func getList(response *http.Response) ([]Item, error) {
 		item := Item{}
 		item.Name = s.Find("td:nth-of-type(2) a").Text()
 		item.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(s.Find("td:nth-of-type(3)").Text(), ",", ""), "円", ""))
-		uri, exists := s.Find("td:nth-of-type(2) a").Attr("href")
-		if exists {
-			requestURL := response.Request.URL
-			requestURL.Path = path.Join(response.Request.URL.Path, uri)
-			item.Url = requestURL.String()
+		itemURL, exists := s.Find("td:nth-of-type(2) a").Attr("href")
+		refURL, parseErr := url.Parse(itemURL)
+		if exists && parseErr == nil {
+			item.Url = (*requestURL.ResolveReference(refURL)).String()
 		}
 		if item.Name != "" {
 			items = append(items, item)
@@ -198,6 +198,7 @@ func fetchDetailPages(db *gorm.DB, downloadBasePath string) error {
 
 func getDetails(response *http.Response, item ItemMaster, downloadBasePath string) (ItemMaster, error) {
 	body := response.Body
+	requestURL := *response.Request.URL
 	doc, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
 		return ItemMaster{}, fmt.Errorf("Get detail page document body error %w", err)
@@ -207,30 +208,36 @@ func getDetails(response *http.Response, item ItemMaster, downloadBasePath strin
 
 	// Image
 	href, exists := doc.Find("table tr:nth-of-type(1) td:nth-of-type(1) img").Attr("src")
-	imageUrl := path.Join(response.Request.URL.Path, href)
-	isUpdated, currentLastModified := checkFileUpdated(imageUrl, item.ImageLastModifiedAt)
-	if exists && isUpdated {
-		item.ImageUrl = imageUrl
-		item.ImageLastModifiedAt = currentLastModified
-		imageDownloadPath, err := downloadFile(imageUrl, filepath.Join(downloadBasePath, "img", strconv.Itoa(int(item.ID)), item.ImageFileName()))
-		if err != nil {
-			return ItemMaster{}, fmt.Errorf("Download image error: %w", err)
+	refURL, parseErr := url.Parse(href)
+	if exists && parseErr == nil {
+		imageURL := (*requestURL.ResolveReference(refURL)).String()
+		isUpdated, currentLastModified := checkFileUpdated(imageURL, item.ImageLastModifiedAt)
+		if isUpdated {
+			item.ImageUrl = imageURL
+			item.ImageLastModifiedAt = currentLastModified
+			imageDownloadPath, err := downloadFile(imageURL, filepath.Join(downloadBasePath, "img", strconv.Itoa(int(item.ID)), item.ImageFileName()))
+			if err != nil {
+				return ItemMaster{}, fmt.Errorf("Download image error: %w", err)
+			}
+			item.ImageDownloadPath = imageDownloadPath
 		}
-		item.ImageDownloadPath = imageDownloadPath
 	}
 
 	// PDF
 	href, exists = doc.Find("table tr:nth-of-type(3) td:nth-of-type(2) a").Attr("href")
-	pdfUrl := path.Join(response.Request.URL.Path, href)
-	isUpdated, currentLastModified = checkFileUpdated(pdfUrl, item.PDFLastModifiedAt)
-	if exists && isUpdated {
-		item.PDFUrl = pdfUrl
-		item.PDFLastModifiedAt = currentLastModified
-		pdfDownloadPath, err := downloadFile(pdfUrl, filepath.Join(downloadBasePath, "pdf", strconv.Itoa(int(item.ID)), item.PDFFileName()))
-		if err != nil {
-			return ItemMaster{}, fmt.Errorf("Download pdf error: %w", err)
+	refURL, parseErr = url.Parse(href)
+	if exists && parseErr == nil {
+		pdfURL := (*requestURL.ResolveReference(refURL)).String()
+		isUpdated, currentLastModified := checkFileUpdated(pdfURL, item.PDFLastModifiedAt)
+		if isUpdated {
+			item.PDFUrl = pdfURL
+			item.PDFLastModifiedAt = currentLastModified
+			pdfDownloadPath, err := downloadFile(pdfURL, filepath.Join(downloadBasePath, "pdf", strconv.Itoa(int(item.ID)), item.PDFFileName()))
+			if err != nil {
+				return ItemMaster{}, fmt.Errorf("Download pdf error: %w", err)
+			}
+			item.PDFDownloadPath = pdfDownloadPath
 		}
-		item.PDFDownloadPath = pdfDownloadPath
 	}
 
 	return item, nil
