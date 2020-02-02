@@ -10,4 +10,5 @@ type Config struct {
 		Password string
 	}
 	BaseURL string
+	DownloadBasePath string
 }

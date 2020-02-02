@@ -17,9 +17,6 @@ import (
 	"time"
 )
 
-var currentDirectory, _ = os.Getwd()
-var downloadBasePath = filepath.Join(currentDirectory, "work", "downloadFiles")
-
 func main() {
 	config, err := configure()
 	if err != nil {
@@ -50,7 +47,7 @@ func main() {
 		panic(err)
 	}
 
-	if err := fetchDetailPages(db); err != nil {
+	if err := fetchDetailPages(db, config.DownloadBasePath); err != nil {
 		panic(err)
 	}
 }
@@ -165,7 +162,7 @@ func updateItemMaster(db *gorm.DB) error {
 	return nil
 }
 
-func fetchDetailPages(db *gorm.DB) error {
+func fetchDetailPages(db *gorm.DB, downloadBasePath string) error {
 	var items []ItemMaster
 	if err := db.Find(&items).Error; err != nil {
 		return fmt.Errorf("Select error: %w", err)
@@ -177,7 +174,7 @@ func fetchDetailPages(db *gorm.DB) error {
 			return fmt.Errorf("Fetch detail page body error: %w", err)
 		}
 
-		currentItem, err := getDetails(response, item)
+		currentItem, err := getDetails(response, item, downloadBasePath)
 		if err != nil {
 			return fmt.Errorf("Fetch detail page content error: %w", err)
 		}
@@ -199,7 +196,7 @@ func fetchDetailPages(db *gorm.DB) error {
 	return nil
 }
 
-func getDetails(response *http.Response, item ItemMaster) (ItemMaster, error) {
+func getDetails(response *http.Response, item ItemMaster, downloadBasePath string) (ItemMaster, error) {
 	body := response.Body
 	doc, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
@@ -304,7 +301,13 @@ func configure() (Config, error) {
 	viper.SetDefault("db.user", "user")
 	viper.SetDefault("db.password", "password")
 	viper.SetDefault("baseURL", "http://localhost:3000/")
-	_, err := os.Stat(filepath.Join(".", "conf", "config-local.yml"))
+	currentDirectory, err := os.Getwd()
+	if err != nil {
+		currentDirectory = "."
+	}
+	viper.SetDefault("downloadBasePath", filepath.Join(currentDirectory, "work", "downloadFiles"))
+
+	_, err = os.Stat(filepath.Join(".", "conf", "config-local.yml"))
 	if err == nil {
 		viper.SetConfigName("config-local")
 	} else {
