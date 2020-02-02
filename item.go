@@ -21,7 +21,6 @@ type ItemMaster struct {
 	gorm.Model
 	Item
 	Description string
-	LastCheckedAt time.Time
 	ImageUrl string
 	ImageLastModifiedAt time.Time
 	ImageDownloadPath string
@@ -40,4 +39,14 @@ func (i ItemMaster) ImageFileName() string {
 
 func (i ItemMaster) PDFFileName() string {
 	return filepath.Base(i.PDFUrl)
+}
+
+func (i ItemMaster) equals(target ItemMaster) bool {
+	return i.Description == target.Description &&
+		i.ImageUrl == target.ImageUrl &&
+		i.ImageLastModifiedAt == target.ImageLastModifiedAt &&
+		i.ImageDownloadPath == target.ImageDownloadPath &&
+		i.PDFUrl == target.PDFUrl &&
+		i.PDFLastModifiedAt == target.PDFLastModifiedAt &&
+		i.PDFDownloadPath == target.PDFDownloadPath
 }

@@ -50,8 +50,7 @@ func main() {
 		panic(err)
 	}
 
-	durationDays := 5
-	if err := fetchDetailPages(db, durationDays); err != nil {
+	if err := fetchDetailPages(db); err != nil {
 		panic(err)
 	}
 }
@@ -130,6 +129,7 @@ func updateItemMaster(db *gorm.DB) error {
 	var insertRecords []interface{}
 	for _, newItem := range newItems {
 		insertRecords = append(insertRecords, ItemMaster{Item: newItem.Item})
+		fmt.Printf("Index item is created: %s\n", newItem.Url)
 	}
 	if err := gormbulk.BulkInsert(db, insertRecords, 2000); err != nil {
 		return fmt.Errorf("Bulk insert error: %w", err)
@@ -141,12 +141,20 @@ func updateItemMaster(db *gorm.DB) error {
 		return fmt.Errorf("Update error: %w", err)
 	}
 	for _, updatedItem := range updatedItems {
-		if err := db.Unscoped().Model(ItemMaster{}).Where("url = ?", updatedItem.Url).Updates(map[string]interface{}{"nam": updatedItem.Name, "price": updatedItem.Price, "deleted_at": nil}).Error; err != nil {
+		fmt.Printf("Index item is updated: %s\n", updatedItem.Url)
+		if err := db.Unscoped().Model(ItemMaster{}).Where("url = ?", updatedItem.Url).Updates(map[string]interface{}{"name": updatedItem.Name, "price": updatedItem.Price, "deleted_at": nil}).Error; err != nil {
 			return fmt.Errorf("Update error: %w", err)
 		}
 	}
 
 	// Delete
+	var deletedItems []ItemMaster
+	if err := db.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Find(&deletedItems).Error; err != nil {
+		return fmt.Errorf("Delete error: %w", err)
+	}
+	for _, deletedItem := range deletedItems {
+		fmt.Printf("Index item is deleted: %s\n", deletedItem.Url)
+	}
 	if err := db.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Delete(&ItemMaster{}).Error; err != nil {
 		return fmt.Errorf("Delete error: %w", err)
 	}
@@ -154,9 +162,9 @@ func updateItemMaster(db *gorm.DB) error {
 	return nil
 }
 
-func fetchDetailPages(db *gorm.DB, durationDays int) error {
+func fetchDetailPages(db *gorm.DB) error {
 	var items []ItemMaster
-	if err := db.Where("last_checked_at < ?", time.Now().AddDate(0, 0, -durationDays)).Find(&items).Error; err != nil {
+	if err := db.Find(&items).Error; err != nil {
 		return fmt.Errorf("Select error: %w", err)
 	}
 
@@ -166,21 +174,23 @@ func fetchDetailPages(db *gorm.DB, durationDays int) error {
 			return fmt.Errorf("Fetch detail page body error: %w", err)
 		}
 
-		itemWithDetails, err := getDetails(body, item)
+		currentItem, err := getDetails(body, item)
 		if err != nil {
 			return fmt.Errorf("Fetch detail page content error: %w", err)
 		}
 
-		if err = db.Model(&itemWithDetails).Updates(ItemMaster{
-			Description: itemWithDetails.Description,
-			LastCheckedAt: time.Now(),
-			ImageUrl: itemWithDetails.ImageUrl,
-			ImageLastModifiedAt: itemWithDetails.ImageLastModifiedAt,
-			ImageDownloadPath: itemWithDetails.ImageDownloadPath,
-			PDFUrl: itemWithDetails.PDFUrl,
-			PDFLastModifiedAt: itemWithDetails.PDFLastModifiedAt,
-			PDFDownloadPath: itemWithDetails.PDFDownloadPath}).Error; err != nil {
-			return fmt.Errorf("Update item detail info error: %w", err)
+		if !item.equals(currentItem) {
+			if err = db.Model(&currentItem).Updates(ItemMaster{
+				Description:         currentItem.Description,
+				ImageUrl:            currentItem.ImageUrl,
+				ImageLastModifiedAt: currentItem.ImageLastModifiedAt,
+				ImageDownloadPath:   currentItem.ImageDownloadPath,
+				PDFUrl:              currentItem.PDFUrl,
+				PDFLastModifiedAt:   currentItem.PDFLastModifiedAt,
+				PDFDownloadPath:     currentItem.PDFDownloadPath}).Error; err != nil {
+				return fmt.Errorf("Update item detail info error: %w", err)
+			}
+			fmt.Printf("Detail page is updated: %s\n", currentItem.Url)
 		}
 	}
 	return nil
@@ -269,7 +279,7 @@ func downloadFile(url string, downloadPath string) (downloadedPath string, err e
 	if err != nil {
 		return "", fmt.Errorf("Download file error: %w", err)
 	} else {
-		fmt.Println("Download File: ", url)
+		fmt.Println("Download File:", url)
 	}
 	defer resp.Body.Close()
 
