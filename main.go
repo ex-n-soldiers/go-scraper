@@ -79,7 +79,7 @@ func getResponse(url string) (*http.Response, error) {
 }
 
 func getList(response *http.Response) ([]Item, error) {
-	var body = response.Body
+	body := response.Body
 	var items []Item
 
 	doc, err := goquery.NewDocumentFromReader(body)
