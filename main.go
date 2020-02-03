@@ -53,11 +53,11 @@ func main() {
 }
 
 func gormConnect(config Config) (*gorm.DB, error) {
-	dbHost := "localhost"
-	dbPort := "3306"
-	dbName := "go-scraper-dev"
-	dbUser := "root"
-	dbPassword := "root"
+	dbHost := config.Db.Host
+	dbPort := config.Db.Port
+	dbName := config.Db.DbName
+	dbUser := config.Db.User
+	dbPassword := config.Db.Password
 
 	db, err := gorm.Open("mysql", fmt.Sprintf("%s:%s@(%s:%s)/%s?charset=utf8&parseTime=True&loc=Local", dbUser, dbPassword, dbHost, dbPort, dbName))
 	if err != nil {
