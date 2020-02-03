@@ -304,7 +304,7 @@ func configure() (Config, error) {
 	var config Config
 	viper.SetDefault("db.host", "localhost")
 	viper.SetDefault("db.port", "3306")
-	viper.SetDefault("db.dbName", "go_scraper")
+	viper.SetDefault("db.dbName", "go-scraper")
 	viper.SetDefault("db.user", "user")
 	viper.SetDefault("db.password", "password")
 	viper.SetDefault("baseURL", "http://localhost:3000/")
