@@ -19,7 +19,6 @@ import (
 )
 
 func main() {
-	// オプション取得
 	var pageOption bool
 	flag.BoolVar(&pageOption, "p", false, "page option must be bool")
 	flag.Parse()
@@ -40,13 +39,16 @@ func main() {
 		panic(err)
 	}
 
-	items, err := getList(response)
+	items, err := getList(response, config.NotFoundMessage)
 	if err != nil {
 		panic(err)
 	}
 
 	if pageOption && len(items) > 0 {
 		items, err = getOtherPageList(items, config, response)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	if err := registerCurrentData(items, db); err != nil {
@@ -88,7 +90,7 @@ func getResponse(url string) (*http.Response, error) {
 	return response, nil
 }
 
-func getList(response *http.Response) ([]Item, error) {
+func getList(response *http.Response, notFoundMessage string) ([]Item, error) {
 	body := response.Body
 	requestURL := *response.Request.URL
 	var items []Item
@@ -99,7 +101,7 @@ func getList(response *http.Response) ([]Item, error) {
 	}
 
 	tr := doc.Find("table tr")
-	if strings.Contains(doc.Text(), "ページが存在しません。") || tr.Size() == 0 {
+	if strings.Contains(doc.Text(), notFoundMessage) || tr.Size() == 0 {
 		return nil, nil
 	}
 	tr.Each(func(_ int, s *goquery.Selection) {
@@ -130,7 +132,7 @@ func getOtherPageList(items []Item, config Config, response *http.Response) ([]I
 		q.Set("page", strconv.Itoa(page))
 		u.RawQuery = q.Encode()
 		response, _ = getResponse(u.String())
-		l, err := getList(response)
+		l, err := getList(response, config.NotFoundMessage)
 		if err != nil {
 			return nil, fmt.Errorf("Get list error: %w", err)
 		}
@@ -354,6 +356,7 @@ func configure() (Config, error) {
 		currentDirectory = "."
 	}
 	viper.SetDefault("downloadBasePath", filepath.Join(currentDirectory, "work", "downloadFiles"))
+	viper.SetDefault("notFoundMessage", "ページが存在しません。")
 
 	_, err = os.Stat(filepath.Join(".", "conf", "config-local.yml"))
 	if err == nil {
