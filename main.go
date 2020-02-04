@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/jinzhu/gorm"
@@ -18,6 +19,11 @@ import (
 )
 
 func main() {
+	// オプション取得
+	var pageOption bool
+	flag.BoolVar(&pageOption, "p", false, "page option must be bool")
+	flag.Parse()
+
 	config, err := configure()
 	if err != nil {
 		panic(err)
@@ -37,6 +43,10 @@ func main() {
 	items, err := getList(response)
 	if err != nil {
 		panic(err)
+	}
+
+	if pageOption && len(items) > 0 {
+		items, err = getOtherPageList(items, config, response)
 	}
 
 	if err := registerCurrentData(items, db); err != nil {
@@ -88,7 +98,11 @@ func getList(response *http.Response) ([]Item, error) {
 		return nil, fmt.Errorf("Get document error: %w", err)
 	}
 
-	doc.Find("table tr").Each(func(_ int, s *goquery.Selection) {
+	tr := doc.Find("table tr")
+	if strings.Contains(doc.Text(), "ページが存在しません。") || tr.Size() == 0 {
+		return nil, nil
+	}
+	tr.Each(func(_ int, s *goquery.Selection) {
 		item := Item{}
 		item.Name = s.Find("td:nth-of-type(2) a").Text()
 		item.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(s.Find("td:nth-of-type(3)").Text(), ",", ""), "円", ""))
@@ -101,6 +115,33 @@ func getList(response *http.Response) ([]Item, error) {
 			items = append(items, item)
 		}
 	})
+	return items, nil
+}
+
+func getOtherPageList(items []Item, config Config, response *http.Response) ([]Item, error) {
+	page := 2
+	existsPage := true
+	for existsPage == true {
+		u, err := url.Parse(config.BaseURL)
+		if err != nil {
+			return nil, fmt.Errorf("Parse url error: %w", err)
+		}
+		q := u.Query()
+		q.Set("page", strconv.Itoa(page))
+		u.RawQuery = q.Encode()
+		response, _ = getResponse(u.String())
+		l, err := getList(response)
+		if err != nil {
+			return nil, fmt.Errorf("Get list error: %w", err)
+		}
+		if len(l) == 0 {
+			fmt.Printf("Item is not found: %s\n", u.String())
+			existsPage = false
+		} else {
+			items = append(items, l...)
+			page++
+		}
+	}
 	return items, nil
 }
 
@@ -304,7 +345,7 @@ func configure() (Config, error) {
 	var config Config
 	viper.SetDefault("db.host", "localhost")
 	viper.SetDefault("db.port", "3306")
-	viper.SetDefault("db.dbName", "go-scraper")
+	viper.SetDefault("db.dbName", "go_scraper")
 	viper.SetDefault("db.user", "user")
 	viper.SetDefault("db.password", "password")
 	viper.SetDefault("baseURL", "http://localhost:3000/")

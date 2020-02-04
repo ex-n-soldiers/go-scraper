@@ -2,10 +2,10 @@ db:
   # sample::
   #   host: "localhost"
   #   port: "3306"
-  #   dbName: "go-scraper"
+  #   dbName: "go_scraper"
   #   user: "user"
   #   password: "password"
-  dbName: "go-scraper"
+  dbName: "go_scraper"
   user: "user"
   password: "password"
 baseURL: "http://localhost:3000/"
