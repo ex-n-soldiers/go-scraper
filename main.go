@@ -95,7 +95,7 @@ func getList(response *http.Response) ([]Item, error) {
 		itemURL, exists := s.Find("td:nth-of-type(2) a").Attr("href")
 		refURL, parseErr := url.Parse(itemURL)
 		if exists && parseErr == nil {
-			item.Url = (*requestURL.ResolveReference(refURL)).String()
+			item.URL = (*requestURL.ResolveReference(refURL)).String()
 		}
 		if item.Name != "" {
 			items = append(items, item)
@@ -129,7 +129,7 @@ func updateItemMaster(db *gorm.DB) error {
 	var insertRecords []interface{}
 	for _, newItem := range newItems {
 		insertRecords = append(insertRecords, ItemMaster{Item: newItem.Item})
-		fmt.Printf("Index item is created: %s\n", newItem.Url)
+		fmt.Printf("Index item is created: %s\n", newItem.URL)
 	}
 	if err := gormbulk.BulkInsert(db, insertRecords, 2000); err != nil {
 		return fmt.Errorf("Bulk insert error: %w", err)
@@ -141,8 +141,8 @@ func updateItemMaster(db *gorm.DB) error {
 		return fmt.Errorf("Update error: %w", err)
 	}
 	for _, updatedItem := range updatedItems {
-		fmt.Printf("Index item is updated: %s\n", updatedItem.Url)
-		if err := db.Unscoped().Model(ItemMaster{}).Where("url = ?", updatedItem.Url).Updates(map[string]interface{}{"name": updatedItem.Name, "price": updatedItem.Price, "deleted_at": nil}).Error; err != nil {
+		fmt.Printf("Index item is updated: %s\n", updatedItem.URL)
+		if err := db.Unscoped().Model(ItemMaster{}).Where("url = ?", updatedItem.URL).Updates(map[string]interface{}{"name": updatedItem.Name, "price": updatedItem.Price, "deleted_at": nil}).Error; err != nil {
 			return fmt.Errorf("Update error: %w", err)
 		}
 	}
@@ -153,7 +153,7 @@ func updateItemMaster(db *gorm.DB) error {
 		return fmt.Errorf("Delete error: %w", err)
 	}
 	for _, deletedItem := range deletedItems {
-		fmt.Printf("Index item is deleted: %s\n", deletedItem.Url)
+		fmt.Printf("Index item is deleted: %s\n", deletedItem.URL)
 	}
 	if err := db.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Delete(&ItemMaster{}).Error; err != nil {
 		return fmt.Errorf("Delete error: %w", err)
@@ -169,7 +169,7 @@ func fetchDetailPages(db *gorm.DB, downloadBasePath string) error {
 	}
 
 	for _, item := range items {
-		response, err := getResponse(item.Url)
+		response, err := getResponse(item.URL)
 		if err != nil {
 			return fmt.Errorf("Fetch detail page body error: %w", err)
 		}
@@ -182,15 +182,15 @@ func fetchDetailPages(db *gorm.DB, downloadBasePath string) error {
 		if !item.equals(currentItem) {
 			if err = db.Model(&currentItem).Updates(ItemMaster{
 				Description:         currentItem.Description,
-				ImageUrl:            currentItem.ImageUrl,
+				ImageURL:            currentItem.ImageURL,
 				ImageLastModifiedAt: currentItem.ImageLastModifiedAt,
 				ImageDownloadPath:   currentItem.ImageDownloadPath,
-				PDFUrl:              currentItem.PDFUrl,
-				PDFLastModifiedAt:   currentItem.PDFLastModifiedAt,
-				PDFDownloadPath:     currentItem.PDFDownloadPath}).Error; err != nil {
+				PdfURL:              currentItem.PdfURL,
+				PdfLastModifiedAt:   currentItem.PdfLastModifiedAt,
+				PdfDownloadPath:     currentItem.PdfDownloadPath}).Error; err != nil {
 				return fmt.Errorf("Update item detail info error: %w", err)
 			}
-			fmt.Printf("Detail page is updated: %s\n", currentItem.Url)
+			fmt.Printf("Detail page is updated: %s\n", currentItem.URL)
 		}
 	}
 	return nil
@@ -213,7 +213,7 @@ func getDetails(response *http.Response, item ItemMaster, downloadBasePath strin
 		imageURL := (*requestURL.ResolveReference(refURL)).String()
 		isUpdated, currentLastModified := checkFileUpdated(imageURL, item.ImageLastModifiedAt)
 		if isUpdated {
-			item.ImageUrl = imageURL
+			item.ImageURL = imageURL
 			item.ImageLastModifiedAt = currentLastModified
 			imageDownloadPath, err := downloadFile(imageURL, filepath.Join(downloadBasePath, "img", strconv.Itoa(int(item.ID)), item.ImageFileName()))
 			if err != nil {
@@ -228,23 +228,23 @@ func getDetails(response *http.Response, item ItemMaster, downloadBasePath strin
 	refURL, parseErr = url.Parse(href)
 	if exists && parseErr == nil {
 		pdfURL := (*requestURL.ResolveReference(refURL)).String()
-		isUpdated, currentLastModified := checkFileUpdated(pdfURL, item.PDFLastModifiedAt)
+		isUpdated, currentLastModified := checkFileUpdated(pdfURL, item.PdfLastModifiedAt)
 		if isUpdated {
-			item.PDFUrl = pdfURL
-			item.PDFLastModifiedAt = currentLastModified
-			pdfDownloadPath, err := downloadFile(pdfURL, filepath.Join(downloadBasePath, "pdf", strconv.Itoa(int(item.ID)), item.PDFFileName()))
+			item.PdfURL = pdfURL
+			item.PdfLastModifiedAt = currentLastModified
+			pdfDownloadPath, err := downloadFile(pdfURL, filepath.Join(downloadBasePath, "pdf", strconv.Itoa(int(item.ID)), item.PdfFileName()))
 			if err != nil {
 				return ItemMaster{}, fmt.Errorf("Download pdf error: %w", err)
 			}
-			item.PDFDownloadPath = pdfDownloadPath
+			item.PdfDownloadPath = pdfDownloadPath
 		}
 	}
 
 	return item, nil
 }
 
-func checkFileUpdated(fileUrl string, lastModified time.Time) (isUpdated bool, currentLastModified time.Time) {
-	currentLastModified, err := getLastModified(fileUrl)
+func checkFileUpdated(fileURL string, lastModified time.Time) (isUpdated bool, currentLastModified time.Time) {
+	currentLastModified, err := getLastModified(fileURL)
 	if err != nil {
 		return false, currentLastModified
 	}
@@ -256,8 +256,8 @@ func checkFileUpdated(fileUrl string, lastModified time.Time) (isUpdated bool, c
 	}
 }
 
-func getLastModified(fileUrl string) (time.Time, error) {
-	res, err := http.Head(fileUrl)
+func getLastModified(fileURL string) (time.Time, error) {
+	res, err := http.Head(fileURL)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("HTTP HEAD request error: %w", err)
 	}

@@ -9,7 +9,7 @@ import (
 type Item struct {
 	Name string `gorm:"not null"`
 	Price int
-	Url string `gorm:"unique_index"`
+	URL string `gorm:"unique_index"`
 }
 
 type LatestItem struct {
@@ -21,12 +21,12 @@ type ItemMaster struct {
 	gorm.Model
 	Item
 	Description string
-	ImageUrl string
+	ImageURL string
 	ImageLastModifiedAt time.Time
 	ImageDownloadPath string
-	PDFUrl string
-	PDFLastModifiedAt time.Time
-	PDFDownloadPath string
+	PdfURL string
+	PdfLastModifiedAt time.Time
+	PdfDownloadPath string
 }
 
 func (ItemMaster) TableName() string {
@@ -34,19 +34,19 @@ func (ItemMaster) TableName() string {
 }
 
 func (i ItemMaster) ImageFileName() string {
-	return filepath.Base(i.ImageUrl)
+	return filepath.Base(i.ImageURL)
 }
 
-func (i ItemMaster) PDFFileName() string {
-	return filepath.Base(i.PDFUrl)
+func (i ItemMaster) PdfFileName() string {
+	return filepath.Base(i.PdfURL)
 }
 
 func (i ItemMaster) equals(target ItemMaster) bool {
 	return i.Description == target.Description &&
-		i.ImageUrl == target.ImageUrl &&
+		i.ImageURL == target.ImageURL &&
 		i.ImageLastModifiedAt == target.ImageLastModifiedAt &&
 		i.ImageDownloadPath == target.ImageDownloadPath &&
-		i.PDFUrl == target.PDFUrl &&
-		i.PDFLastModifiedAt == target.PDFLastModifiedAt &&
-		i.PDFDownloadPath == target.PDFDownloadPath
+		i.PdfURL == target.PdfURL &&
+		i.PdfLastModifiedAt == target.PdfLastModifiedAt &&
+		i.PdfDownloadPath == target.PdfDownloadPath
 }
