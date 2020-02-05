@@ -356,7 +356,7 @@ func configure() (Config, error) {
 		currentDirectory = "."
 	}
 	viper.SetDefault("downloadBasePath", filepath.Join(currentDirectory, "work", "downloadFiles"))
-	viper.SetDefault("notFoundMessage", "ページが存在しません。")
+	viper.SetDefault("notFoundMessage", "ページが存在しません")
 
 	_, err = os.Stat(filepath.Join(".", "conf", "config-local.yml"))
 	if err == nil {

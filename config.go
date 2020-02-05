@@ -15,12 +15,3 @@ type Db struct {
 	User string
 	Password string
 }
-
-type Db struct {
-	Host string
-	InstanceName string
-	DbName string
-	Port string
-	User string
-	Password string
-}
