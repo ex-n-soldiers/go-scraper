@@ -350,7 +350,7 @@ func configure() (Config, error) {
 	viper.SetDefault("db.dbName", "go_scraper")
 	viper.SetDefault("db.user", "user")
 	viper.SetDefault("db.password", "password")
-	viper.SetDefault("baseURL", "http://localhost:3000/")
+	viper.SetDefault("baseURL", "http://localhost:5000/")
 	currentDirectory, err := os.Getwd()
 	if err != nil {
 		currentDirectory = "."
