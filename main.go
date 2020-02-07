@@ -20,7 +20,9 @@ import (
 
 func main() {
 	var pageOption bool
+	var storeOption bool
 	flag.BoolVar(&pageOption, "p", false, "page option must be bool")
+	flag.BoolVar(&storeOption, "s", false, "store option must be bool")
 	flag.Parse()
 
 	config, err := configure()
@@ -62,6 +64,13 @@ func main() {
 	if err := fetchDetailPages(db, config.DownloadBasePath); err != nil {
 		panic(err)
 	}
+
+	// store historical data
+	if storeOption && len(items) > 0 {
+		if err := registerCurrentData4History(items, db); err != nil {
+			panic(err)
+		}
+	}
 }
 
 func gormConnect(config Config) (*gorm.DB, error) {
@@ -76,7 +85,7 @@ func gormConnect(config Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("DB connection error: %w", err)
 	}
 
-	if err := db.AutoMigrate(&ItemMaster{}, &LatestItem{}).Error; err != nil {
+	if err := db.AutoMigrate(&ItemMaster{}, &LatestItem{}, &HistoricalItem{}).Error; err != nil {
 		return nil, fmt.Errorf("DB migration error: %w", err)
 	}
 	return db, nil
@@ -376,4 +385,20 @@ func configure() (Config, error) {
 	}
 
 	return config, nil
+}
+
+func registerCurrentData4History(items []Item, db *gorm.DB) error {
+	var insertRecords []interface{}
+	var histItem HistoricalItem
+	for _, item := range items {
+		histItem = HistoricalItem{}
+		histItem.Name = item.Name
+		histItem.Price = item.Price
+		histItem.URL = item.URL
+		insertRecords = append(insertRecords, histItem)
+	}
+	if err := gormbulk.BulkInsert(db, insertRecords, 2000); err != nil {
+		return fmt.Errorf("Bulk insert error: %w", err)
+	}
+	return nil
 }
