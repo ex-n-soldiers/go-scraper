@@ -50,3 +50,10 @@ func (i ItemMaster) equals(target ItemMaster) bool {
 		i.PdfLastModifiedAt == target.PdfLastModifiedAt &&
 		i.PdfDownloadPath == target.PdfDownloadPath
 }
+
+type HistoricalItem struct {
+	Name      string `gorm:"not null"`
+	Price     int
+	URL       string    `gorm:"primary_index"`
+	CreatedAt time.Time `gorm:"primary_index"`
+}
