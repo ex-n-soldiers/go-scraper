@@ -172,46 +172,48 @@ func registerCurrentData(items []Item, db *gorm.DB) error {
 }
 
 func updateItemMaster(db *gorm.DB) error {
-	// Insert
-	var newItems []LatestItem
-	if err := db.Unscoped().Joins("left join item_master on latest_items.url = item_master.url").Where("item_master.name is null").Find(&newItems).Error; err != nil {
-		return fmt.Errorf("Insert error: %w", err)
-	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		// Insert
+		var newItems []LatestItem
+		if err := tx.Unscoped().Joins("left join item_master on latest_items.url = item_master.url").Where("item_master.name is null").Find(&newItems).Error; err != nil {
+			return fmt.Errorf("Insert error: %w", err)
+		}
 
-	var insertRecords []interface{}
-	for _, newItem := range newItems {
-		insertRecords = append(insertRecords, ItemMaster{Item: newItem.Item})
-		fmt.Printf("Index item is created: %s\n", newItem.URL)
-	}
-	if err := gormbulk.BulkInsert(db, insertRecords, 2000); err != nil {
-		return fmt.Errorf("Bulk insert error: %w", err)
-	}
+		var insertRecords []interface{}
+		for _, newItem := range newItems {
+			insertRecords = append(insertRecords, ItemMaster{Item: newItem.Item})
+			fmt.Printf("Index item is created: %s\n", newItem.URL)
+		}
+		if err := gormbulk.BulkInsert(tx, insertRecords, 2000); err != nil {
+			return fmt.Errorf("Bulk insert error: %w", err)
+		}
 
-	// Update
-	var updatedItems []LatestItem
-	if err := db.Unscoped().Joins("inner join item_master on latest_items.url = item_master.url").Where("latest_items.name <> item_master.name or latest_items.price <> item_master.price or item_master.deleted_at is not null").Find(&updatedItems).Error; err != nil {
-		return fmt.Errorf("Update error: %w", err)
-	}
-	for _, updatedItem := range updatedItems {
-		fmt.Printf("Index item is updated: %s\n", updatedItem.URL)
-		if err := db.Unscoped().Model(ItemMaster{}).Where("url = ?", updatedItem.URL).Updates(map[string]interface{}{"name": updatedItem.Name, "price": updatedItem.Price, "deleted_at": nil}).Error; err != nil {
+		// Update
+		var updatedItems []LatestItem
+		if err := tx.Unscoped().Joins("inner join item_master on latest_items.url = item_master.url").Where("latest_items.name <> item_master.name or latest_items.price <> item_master.price or item_master.deleted_at is not null").Find(&updatedItems).Error; err != nil {
 			return fmt.Errorf("Update error: %w", err)
 		}
-	}
+		for _, updatedItem := range updatedItems {
+			fmt.Printf("Index item is updated: %s\n", updatedItem.URL)
+			if err := tx.Unscoped().Model(ItemMaster{}).Where("url = ?", updatedItem.URL).Updates(map[string]interface{}{"name": updatedItem.Name, "price": updatedItem.Price, "deleted_at": nil}).Error; err != nil {
+				return fmt.Errorf("Update error: %w", err)
+			}
+		}
 
-	// Delete
-	var deletedItems []ItemMaster
-	if err := db.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Find(&deletedItems).Error; err != nil {
-		return fmt.Errorf("Delete error: %w", err)
-	}
-	for _, deletedItem := range deletedItems {
-		fmt.Printf("Index item is deleted: %s\n", deletedItem.URL)
-	}
-	if err := db.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Delete(&ItemMaster{}).Error; err != nil {
-		return fmt.Errorf("Delete error: %w", err)
-	}
+		// Delete
+		var deletedItems []ItemMaster
+		if err := tx.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Find(&deletedItems).Error; err != nil {
+			return fmt.Errorf("Delete error: %w", err)
+		}
+		for _, deletedItem := range deletedItems {
+			fmt.Printf("Index item is deleted: %s\n", deletedItem.URL)
+		}
+		if err := tx.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Delete(&ItemMaster{}).Error; err != nil {
+			return fmt.Errorf("Delete error: %w", err)
+		}
 
-	return nil
+		return nil
+	})
 }
 
 func fetchDetailPages(db *gorm.DB, downloadBasePath string) error {
