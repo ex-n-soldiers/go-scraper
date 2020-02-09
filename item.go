@@ -7,9 +7,9 @@ import (
 )
 
 type Item struct {
-	Name string `gorm:"not null"`
+	Name  string `gorm:"not null"`
 	Price int
-	URL string `gorm:"unique_index"`
+	URL   string `gorm:"unique_index"`
 }
 
 type LatestItem struct {
@@ -20,13 +20,13 @@ type LatestItem struct {
 type ItemMaster struct {
 	gorm.Model
 	Item
-	Description string
-	ImageURL string
+	Description         string
+	ImageURL            string
 	ImageLastModifiedAt time.Time
-	ImageDownloadPath string
-	PdfURL string
-	PdfLastModifiedAt time.Time
-	PdfDownloadPath string
+	ImageDownloadPath   string
+	PdfURL              string
+	PdfLastModifiedAt   time.Time
+	PdfDownloadPath     string
 }
 
 func (ItemMaster) TableName() string {

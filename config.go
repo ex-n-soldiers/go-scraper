@@ -2,16 +2,16 @@ package main
 
 type Config struct {
 	Db
-	BaseURL string
+	BaseURL          string
 	DownloadBasePath string
-	NotFoundMessage string
+	NotFoundMessage  string
 }
 
 type Db struct {
-	Host string
+	Host         string
 	InstanceName string
-	DbName string
-	Port string
-	User string
-	Password string
+	DbName       string
+	Port         string
+	User         string
+	Password     string
 }
