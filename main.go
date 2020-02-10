@@ -356,34 +356,66 @@ func downloadFile(url string, downloadPath string) (downloadedPath string, err e
 
 func configure() (Config, error) {
 	var config Config
-	viper.SetDefault("db.host", "localhost")
-	viper.SetDefault("db.port", "3306")
-	viper.SetDefault("db.dbName", "go_scraper")
-	viper.SetDefault("db.user", "user")
-	viper.SetDefault("db.password", "password")
-	viper.SetDefault("baseURL", "http://localhost:5000/")
-	currentDirectory, err := os.Getwd()
-	if err != nil {
-		currentDirectory = "."
-	}
-	viper.SetDefault("downloadBasePath", filepath.Join(currentDirectory, "work", "downloadFiles"))
-	viper.SetDefault("notFoundMessage", "ページが存在しません")
+	_, localConfErr := os.Stat(filepath.Join(".", "conf", "config-local.yml"))
+	_, confErr := os.Stat(filepath.Join(".", "conf", "config-local.yml"))
 
-	_, err = os.Stat(filepath.Join(".", "conf", "config-local.yml"))
-	if err == nil {
-		viper.SetConfigName("config-local")
-	} else {
-		viper.SetConfigName("config")
-	}
-	viper.SetConfigType("yml")
-	viper.AddConfigPath(filepath.Join(".", "conf"))
-	viper.AutomaticEnv()
-	if err := viper.ReadInConfig(); err != nil {
-		return Config{}, fmt.Errorf("Read config file error: %w", err)
+	if localConfErr == nil || confErr == nil {
+		viper.SetDefault("db.host", "localhost")
+		viper.SetDefault("db.port", "3306")
+		viper.SetDefault("db.dbName", "go_scraper")
+		viper.SetDefault("db.user", "user")
+		viper.SetDefault("db.password", "password")
+		viper.SetDefault("baseURL", "http://localhost:5000/")
+		currentDirectory, err := os.Getwd()
+		if err != nil {
+			currentDirectory = "."
+		}
+		viper.SetDefault("downloadBasePath", filepath.Join(currentDirectory, "work", "downloadFiles"))
+		viper.SetDefault("notFoundMessage", "ページが存在しません")
+
+		if localConfErr == nil {
+			viper.SetConfigName("config-local")
+		} else {
+			viper.SetConfigName("config")
+		}
+		viper.SetConfigType("yml")
+		viper.AddConfigPath(filepath.Join(".", "conf"))
+		viper.AutomaticEnv()
+		if err := viper.ReadInConfig(); err != nil {
+			return Config{}, fmt.Errorf("Read config file error: %w", err)
+		}
+
+		if err := viper.Unmarshal(&config); err != nil {
+			return Config{}, fmt.Errorf("Unmarshal config file error: %w", err)
+		}
 	}
 
-	if err := viper.Unmarshal(&config); err != nil {
-		return Config{}, fmt.Errorf("Unmarshal config file error: %w", err)
+	if os.Getenv("db_host") != "" {
+		config.Host = os.Getenv("db_host")
+	}
+	if os.Getenv("db_instance_name") != "" {
+		config.InstanceName = os.Getenv("db_instance_name")
+	}
+	if os.Getenv("db_db_name") != "" {
+		config.DbName = os.Getenv("db_db_name")
+	}
+	if os.Getenv("db_port") != "" {
+		config.Port = os.Getenv("db_port")
+	}
+	if os.Getenv("db_user") != "" {
+		config.User = os.Getenv("db_user")
+	}
+	if os.Getenv("db_password") != "" {
+		config.Password = os.Getenv("db_password")
+	}
+	if os.Getenv("base_url") != "" {
+		config.BaseURL = os.Getenv("base_url")
+	}
+	if os.Getenv("download_base_path") != "" {
+		config.DownloadBasePath = os.Getenv("download_base_path")
+	}
+	if os.Getenv("not_found_message") != "" {
+		config.NotFoundMessage = os.Getenv("not_found_message")
 	}
 
 	return config, nil
