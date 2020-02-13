@@ -3,6 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
@@ -65,7 +68,6 @@ func main() {
 		panic(err)
 	}
 
-	// store historical data
 	if storeOption && len(items) > 0 {
 		if err := registerCurrentData4History(items, db); err != nil {
 			panic(err)
@@ -323,35 +325,66 @@ func getLastModified(fileURL string) (time.Time, error) {
 }
 
 func downloadFile(url string, downloadPath string) (downloadedPath string, err error) {
-	// Create base directory
-	err = os.MkdirAll(filepath.Dir(downloadPath), 0777)
-	if err != nil {
-		return "", fmt.Errorf("Mkdir error during download file: %w", err)
-	}
+	if os.Getenv("s3_region") == "" && os.Getenv("s3_bucket") == "" {
+		// Create base directory
+		err = os.MkdirAll(filepath.Dir(downloadPath), 0777)
+		if err != nil {
+			return "", fmt.Errorf("Mkdir error during download file: %w", err)
+		}
 
-	// Create the file
-	out, err := os.Create(downloadPath)
-	if err != nil {
-		return "", fmt.Errorf("Create file error during download file: %w", err)
-	}
-	defer out.Close()
+		// Create the file
+		out, err := os.Create(downloadPath)
+		if err != nil {
+			return "", fmt.Errorf("Create file error during download file: %w", err)
+		}
+		defer out.Close()
 
-	// Get the data
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("Download file error: %w", err)
+		// Get the data
+		resp, err := http.Get(url)
+		if err != nil {
+			return "", fmt.Errorf("Download file error: %w", err)
+		} else {
+			fmt.Println("Download File:", url)
+		}
+		defer resp.Body.Close()
+
+		// Write the body to file
+		if _, err = io.Copy(out, resp.Body); err != nil {
+			return "", fmt.Errorf("Copy file error during download file: %w", err)
+		}
+
+		downloadedPath = filepath.Join(downloadPath, filepath.Base(downloadPath))
+		return downloadedPath, nil
 	} else {
-		fmt.Println("Download File:", url)
-	}
-	defer resp.Body.Close()
+		// Get the file
+		resp, err := http.Get(url)
+		if err != nil {
+			return "", fmt.Errorf("Download file error: %w", err)
+		} else {
+			fmt.Println("Download File:", url)
+		}
+		defer resp.Body.Close()
 
-	// Write the body to file
-	if _, err = io.Copy(out, resp.Body); err != nil {
-		return "", fmt.Errorf("Copy file error during download file: %w", err)
-	}
+		// Create session
+		ses := session.Must(session.NewSession(&aws.Config{
+			S3ForcePathStyle: aws.Bool(true),
+			Region:           aws.String(os.Getenv("s3_region")),
+		}))
 
-	downloadedPath = filepath.Join(downloadPath, filepath.Base(downloadPath))
-	return downloadedPath, nil
+		// Save file to S3
+		uploader := s3manager.NewUploader(ses)
+		result, err := uploader.Upload(&s3manager.UploadInput{
+			Bucket: aws.String(os.Getenv("s3_bucket")),
+			Key:    aws.String(downloadPath),
+			Body:   resp.Body,
+		})
+		if err != nil {
+			return "", fmt.Errorf("Save file error: %w", err)
+		}
+		fmt.Println("S3 URL:", result.Location)
+
+		return result.Location, nil
+	}
 }
 
 func configure() (Config, error) {
