@@ -3,10 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"github.com/PuerkitoBio/goquery"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
 	"github.com/spf13/viper"
@@ -21,6 +21,7 @@ import (
 	"time"
 )
 
+// Lambda用のバイナリファイルを作成する場合は関数名を任意の名前に変更
 func main() {
 	var pageOption bool
 	var storeOption bool
@@ -34,7 +35,12 @@ func main() {
 	}
 
 	db, err := gormConnect(config)
+	if err != nil {
+		panic(err)
+	}
 	defer db.Close()
+
+	err = dbMigration(db)
 	if err != nil {
 		panic(err)
 	}
@@ -87,10 +93,14 @@ func gormConnect(config Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("DB connection error: %w", err)
 	}
 
-	if err := db.AutoMigrate(&ItemMaster{}, &LatestItem{}, &HistoricalItem{}).Error; err != nil {
-		return nil, fmt.Errorf("DB migration error: %w", err)
-	}
 	return db, nil
+}
+
+func dbMigration(db *gorm.DB) error {
+	if err := db.AutoMigrate(&ItemMaster{}, &LatestItem{}, &HistoricalItem{}).Error; err != nil {
+		return fmt.Errorf("DB dbMigration error: %w", err)
+	}
+	return nil
 }
 
 func getResponse(url string) (*http.Response, error) {
