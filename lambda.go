@@ -1,17 +1,24 @@
 package main
 
-import "github.com/aws/aws-lambda-go/lambda"
+import (
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
+	"net/http"
+)
 
 // Lambda用のバイナリファイルを作成する場合は関数名をmainに変更
 func lambdaMain() {
 	lambda.Start(handleRequest)
 }
 
-func handleRequest() (string, error) {
+func handleRequest() (events.APIGatewayProxyResponse, error) {
 	if err := lambdaRun(); err != nil {
-		return "", err
+		return events.APIGatewayProxyResponse{}, err
 	}
-	return "Succeeded!", nil
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Body:       "Succeeded",
+	}, nil
 }
 
 func lambdaRun() error {
