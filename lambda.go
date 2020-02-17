@@ -33,9 +33,8 @@ func lambdaRun() error {
 	}
 	defer db.Close()
 
-	err = dbMigration(db)
-	if err != nil {
-		panic(err)
+	if err = dbMigration(db); err != nil {
+		return err
 	}
 
 	response, err := getResponse(config.BaseURL)
