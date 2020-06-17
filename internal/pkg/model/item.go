@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	"github.com/jinzhu/gorm"
@@ -41,7 +41,7 @@ func (i ItemMaster) PdfFileName() string {
 	return filepath.Base(i.PdfURL)
 }
 
-func (i ItemMaster) equals(target ItemMaster) bool {
+func (i ItemMaster) Equals(target ItemMaster) bool {
 	return i.Description == target.Description &&
 		i.ImageURL == target.ImageURL &&
 		i.ImageLastModifiedAt == target.ImageLastModifiedAt &&

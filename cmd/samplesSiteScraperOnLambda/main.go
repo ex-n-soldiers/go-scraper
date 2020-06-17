@@ -1,13 +1,13 @@
 package main
 
 import (
+	"github.com/ex-n-soldiers/go-scraper/internal/pkg"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"net/http"
 )
 
-// Lambda用のバイナリファイルを作成する場合は関数名をmainに変更
-func lambdaMain() {
+func main() {
 	lambda.Start(handleRequest)
 }
 
@@ -22,47 +22,47 @@ func handleRequest() (events.APIGatewayProxyResponse, error) {
 }
 
 func lambdaRun() error {
-	config, err := configure()
+	config, err := pkg.Configure()
 	if err != nil {
 		return err
 	}
 
-	db, err := gormConnect(config)
+	db, err := pkg.GormConnect(config)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	if err = dbMigration(db); err != nil {
+	if err = pkg.DbMigration(db); err != nil {
 		return err
 	}
 
-	response, err := getResponse(config.BaseURL)
+	response, err := pkg.GetResponse(config.BaseURL)
 	if err != nil {
 		return err
 	}
 
-	items, err := getList(response, config.NotFoundMessage)
+	items, err := pkg.GetList(response, config.NotFoundMessage)
 	if err != nil {
 		return err
 	}
 
 	if len(items) > 0 {
-		items, err = getOtherPageList(items, config, response)
+		items, err = pkg.GetOtherPageList(items, config, response)
 		if err != nil {
 			return err
 		}
 	}
 
-	if err := registerCurrentData(items, db); err != nil {
+	if err := pkg.RegisterCurrentData(items, db); err != nil {
 		return err
 	}
 
-	if err := updateItemMaster(db); err != nil {
+	if err := pkg.UpdateItemMaster(db); err != nil {
 		return err
 	}
 
-	if err := fetchDetailPages(db, config.DownloadBasePath); err != nil {
+	if err := pkg.FetchDetailPages(db, config.DownloadBasePath); err != nil {
 		return err
 	}
 

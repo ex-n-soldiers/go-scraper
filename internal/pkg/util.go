@@ -1,16 +1,15 @@
-package main
+package pkg
 
 import (
-	"flag"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/ex-n-soldiers/go-scraper/internal/pkg/model"
 	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/mysql"
 	"github.com/spf13/viper"
-	"github.com/t-tiger/gorm-bulk-insert"
+	gormbulk "github.com/t-tiger/gorm-bulk-insert"
 	"io"
 	"net/http"
 	"net/url"
@@ -21,67 +20,7 @@ import (
 	"time"
 )
 
-// Lambda用のバイナリファイルを作成する場合は関数名を任意の名前に変更
-func main() {
-	var pageOption bool
-	var storeOption bool
-	flag.BoolVar(&pageOption, "p", false, "page option must be bool")
-	flag.BoolVar(&storeOption, "s", false, "store option must be bool")
-	flag.Parse()
-
-	config, err := configure()
-	if err != nil {
-		panic(err)
-	}
-
-	db, err := gormConnect(config)
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-
-	err = dbMigration(db)
-	if err != nil {
-		panic(err)
-	}
-
-	response, err := getResponse(config.BaseURL)
-	if err != nil {
-		panic(err)
-	}
-
-	items, err := getList(response, config.NotFoundMessage)
-	if err != nil {
-		panic(err)
-	}
-
-	if pageOption && len(items) > 0 {
-		items, err = getOtherPageList(items, config, response)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	if err := registerCurrentData(items, db); err != nil {
-		panic(err)
-	}
-
-	if err := updateItemMaster(db); err != nil {
-		panic(err)
-	}
-
-	if err := fetchDetailPages(db, config.DownloadBasePath); err != nil {
-		panic(err)
-	}
-
-	if storeOption && len(items) > 0 {
-		if err := registerCurrentData4History(items, db); err != nil {
-			panic(err)
-		}
-	}
-}
-
-func gormConnect(config Config) (*gorm.DB, error) {
+func GormConnect(config model.Config) (*gorm.DB, error) {
 	dbHost := config.Db.Host
 	dbPort := config.Db.Port
 	dbName := config.Db.DbName
@@ -96,14 +35,14 @@ func gormConnect(config Config) (*gorm.DB, error) {
 	return db, nil
 }
 
-func dbMigration(db *gorm.DB) error {
-	if err := db.AutoMigrate(&ItemMaster{}, &LatestItem{}, &HistoricalItem{}).Error; err != nil {
+func DbMigration(db *gorm.DB) error {
+	if err := db.AutoMigrate(&model.ItemMaster{}, &model.LatestItem{}, &model.HistoricalItem{}).Error; err != nil {
 		return fmt.Errorf("DB dbMigration error: %w", err)
 	}
 	return nil
 }
 
-func getResponse(url string) (*http.Response, error) {
+func GetResponse(url string) (*http.Response, error) {
 	response, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP Get request error: %w", err)
@@ -111,10 +50,10 @@ func getResponse(url string) (*http.Response, error) {
 	return response, nil
 }
 
-func getList(response *http.Response, notFoundMessage string) ([]Item, error) {
+func GetList(response *http.Response, notFoundMessage string) ([]model.Item, error) {
 	body := response.Body
 	requestURL := *response.Request.URL
-	var items []Item
+	var items []model.Item
 
 	doc, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
@@ -126,7 +65,7 @@ func getList(response *http.Response, notFoundMessage string) ([]Item, error) {
 		return nil, nil
 	}
 	tr.Each(func(_ int, s *goquery.Selection) {
-		item := Item{}
+		item := model.Item{}
 		item.Name = s.Find("td:nth-of-type(2) a").Text()
 		item.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(s.Find("td:nth-of-type(3)").Text(), ",", ""), "円", ""))
 		itemURL, exists := s.Find("td:nth-of-type(2) a").Attr("href")
@@ -141,7 +80,7 @@ func getList(response *http.Response, notFoundMessage string) ([]Item, error) {
 	return items, nil
 }
 
-func getOtherPageList(items []Item, config Config, response *http.Response) ([]Item, error) {
+func GetOtherPageList(items []model.Item, config model.Config, response *http.Response) ([]model.Item, error) {
 	page := 2
 	existsPage := true
 	for existsPage == true {
@@ -152,8 +91,8 @@ func getOtherPageList(items []Item, config Config, response *http.Response) ([]I
 		q := u.Query()
 		q.Set("page", strconv.Itoa(page))
 		u.RawQuery = q.Encode()
-		response, _ = getResponse(u.String())
-		l, err := getList(response, config.NotFoundMessage)
+		response, _ = GetResponse(u.String())
+		l, err := GetList(response, config.NotFoundMessage)
 		if err != nil {
 			return nil, fmt.Errorf("Get list error: %w", err)
 		}
@@ -168,14 +107,14 @@ func getOtherPageList(items []Item, config Config, response *http.Response) ([]I
 	return items, nil
 }
 
-func registerCurrentData(items []Item, db *gorm.DB) error {
-	if err := db.Exec("TRUNCATE " + db.NewScope(&LatestItem{}).TableName()).Error; err != nil {
+func RegisterCurrentData(items []model.Item, db *gorm.DB) error {
+	if err := db.Exec("TRUNCATE " + db.NewScope(&model.LatestItem{}).TableName()).Error; err != nil {
 		return fmt.Errorf("Truncate table error: %w", err)
 	}
 
 	var insertRecords []interface{}
 	for _, item := range items {
-		insertRecords = append(insertRecords, LatestItem{Item: item})
+		insertRecords = append(insertRecords, model.LatestItem{Item: item})
 	}
 	if err := gormbulk.BulkInsert(db, insertRecords, 2000); err != nil {
 		return fmt.Errorf("Bulk insert error: %w", err)
@@ -183,17 +122,17 @@ func registerCurrentData(items []Item, db *gorm.DB) error {
 	return nil
 }
 
-func updateItemMaster(db *gorm.DB) error {
+func UpdateItemMaster(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		// Insert
-		var newItems []LatestItem
+		var newItems []model.LatestItem
 		if err := tx.Unscoped().Joins("left join item_master on latest_items.url = item_master.url").Where("item_master.name is null").Find(&newItems).Error; err != nil {
 			return fmt.Errorf("Insert error: %w", err)
 		}
 
 		var insertRecords []interface{}
 		for _, newItem := range newItems {
-			insertRecords = append(insertRecords, ItemMaster{Item: newItem.Item})
+			insertRecords = append(insertRecords, model.ItemMaster{Item: newItem.Item})
 			fmt.Printf("Index item is created: %s\n", newItem.URL)
 		}
 		if err := gormbulk.BulkInsert(tx, insertRecords, 2000); err != nil {
@@ -201,26 +140,26 @@ func updateItemMaster(db *gorm.DB) error {
 		}
 
 		// Update
-		var updatedItems []LatestItem
+		var updatedItems []model.LatestItem
 		if err := tx.Unscoped().Joins("inner join item_master on latest_items.url = item_master.url").Where("latest_items.name <> item_master.name or latest_items.price <> item_master.price or item_master.deleted_at is not null").Find(&updatedItems).Error; err != nil {
 			return fmt.Errorf("Update error: %w", err)
 		}
 		for _, updatedItem := range updatedItems {
 			fmt.Printf("Index item is updated: %s\n", updatedItem.URL)
-			if err := tx.Unscoped().Model(ItemMaster{}).Where("url = ?", updatedItem.URL).Updates(map[string]interface{}{"name": updatedItem.Name, "price": updatedItem.Price, "deleted_at": nil}).Error; err != nil {
+			if err := tx.Unscoped().Model(model.ItemMaster{}).Where("url = ?", updatedItem.URL).Updates(map[string]interface{}{"name": updatedItem.Name, "price": updatedItem.Price, "deleted_at": nil}).Error; err != nil {
 				return fmt.Errorf("Update error: %w", err)
 			}
 		}
 
 		// Delete
-		var deletedItems []ItemMaster
+		var deletedItems []model.ItemMaster
 		if err := tx.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Find(&deletedItems).Error; err != nil {
 			return fmt.Errorf("Delete error: %w", err)
 		}
 		for _, deletedItem := range deletedItems {
 			fmt.Printf("Index item is deleted: %s\n", deletedItem.URL)
 		}
-		if err := tx.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Delete(&ItemMaster{}).Error; err != nil {
+		if err := tx.Where("not exists(select 1 from latest_items li where li.url = item_master.url)").Delete(&model.ItemMaster{}).Error; err != nil {
 			return fmt.Errorf("Delete error: %w", err)
 		}
 
@@ -228,25 +167,25 @@ func updateItemMaster(db *gorm.DB) error {
 	})
 }
 
-func fetchDetailPages(db *gorm.DB, downloadBasePath string) error {
-	var items []ItemMaster
+func FetchDetailPages(db *gorm.DB, downloadBasePath string) error {
+	var items []model.ItemMaster
 	if err := db.Find(&items).Error; err != nil {
 		return fmt.Errorf("Select error: %w", err)
 	}
 
 	for _, item := range items {
-		response, err := getResponse(item.URL)
+		response, err := GetResponse(item.URL)
 		if err != nil {
 			return fmt.Errorf("Fetch detail page body error: %w", err)
 		}
 
-		currentItem, err := getDetails(response, item, downloadBasePath)
+		currentItem, err := GetDetails(response, item, downloadBasePath)
 		if err != nil {
 			return fmt.Errorf("Fetch detail page content error: %w", err)
 		}
 
-		if !item.equals(currentItem) {
-			if err = db.Model(&currentItem).Updates(ItemMaster{
+		if !item.Equals(currentItem) {
+			if err = db.Model(&currentItem).Updates(model.ItemMaster{
 				Description:         currentItem.Description,
 				ImageURL:            currentItem.ImageURL,
 				ImageLastModifiedAt: currentItem.ImageLastModifiedAt,
@@ -262,12 +201,12 @@ func fetchDetailPages(db *gorm.DB, downloadBasePath string) error {
 	return nil
 }
 
-func getDetails(response *http.Response, item ItemMaster, downloadBasePath string) (ItemMaster, error) {
+func GetDetails(response *http.Response, item model.ItemMaster, downloadBasePath string) (model.ItemMaster, error) {
 	body := response.Body
 	requestURL := *response.Request.URL
 	doc, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
-		return ItemMaster{}, fmt.Errorf("Get detail page document body error %w", err)
+		return model.ItemMaster{}, fmt.Errorf("Get detail page document body error %w", err)
 	}
 
 	item.Description = doc.Find("table tr:nth-of-type(2) td:nth-of-type(2)").Text()
@@ -277,13 +216,13 @@ func getDetails(response *http.Response, item ItemMaster, downloadBasePath strin
 	refURL, parseErr := url.Parse(href)
 	if exists && parseErr == nil {
 		imageURL := (*requestURL.ResolveReference(refURL)).String()
-		isUpdated, currentLastModified := checkFileUpdated(imageURL, item.ImageLastModifiedAt)
+		isUpdated, currentLastModified := CheckFileUpdated(imageURL, item.ImageLastModifiedAt)
 		if isUpdated {
 			item.ImageURL = imageURL
 			item.ImageLastModifiedAt = currentLastModified
-			imageDownloadPath, err := downloadFile(imageURL, filepath.Join(downloadBasePath, "img", strconv.Itoa(int(item.ID)), item.ImageFileName()))
+			imageDownloadPath, err := DownloadFile(imageURL, filepath.Join(downloadBasePath, "img", strconv.Itoa(int(item.ID)), item.ImageFileName()))
 			if err != nil {
-				return ItemMaster{}, fmt.Errorf("Download image error: %w", err)
+				return model.ItemMaster{}, fmt.Errorf("Download image error: %w", err)
 			}
 			item.ImageDownloadPath = imageDownloadPath
 		}
@@ -294,13 +233,13 @@ func getDetails(response *http.Response, item ItemMaster, downloadBasePath strin
 	refURL, parseErr = url.Parse(href)
 	if exists && parseErr == nil {
 		pdfURL := (*requestURL.ResolveReference(refURL)).String()
-		isUpdated, currentLastModified := checkFileUpdated(pdfURL, item.PdfLastModifiedAt)
+		isUpdated, currentLastModified := CheckFileUpdated(pdfURL, item.PdfLastModifiedAt)
 		if isUpdated {
 			item.PdfURL = pdfURL
 			item.PdfLastModifiedAt = currentLastModified
-			pdfDownloadPath, err := downloadFile(pdfURL, filepath.Join(downloadBasePath, "pdf", strconv.Itoa(int(item.ID)), item.PdfFileName()))
+			pdfDownloadPath, err := DownloadFile(pdfURL, filepath.Join(downloadBasePath, "pdf", strconv.Itoa(int(item.ID)), item.PdfFileName()))
 			if err != nil {
-				return ItemMaster{}, fmt.Errorf("Download pdf error: %w", err)
+				return model.ItemMaster{}, fmt.Errorf("Download pdf error: %w", err)
 			}
 			item.PdfDownloadPath = pdfDownloadPath
 		}
@@ -309,8 +248,8 @@ func getDetails(response *http.Response, item ItemMaster, downloadBasePath strin
 	return item, nil
 }
 
-func checkFileUpdated(fileURL string, lastModified time.Time) (isUpdated bool, currentLastModified time.Time) {
-	currentLastModified, err := getLastModified(fileURL)
+func CheckFileUpdated(fileURL string, lastModified time.Time) (isUpdated bool, currentLastModified time.Time) {
+	currentLastModified, err := GetLastModified(fileURL)
 	if err != nil {
 		return false, currentLastModified
 	}
@@ -322,7 +261,7 @@ func checkFileUpdated(fileURL string, lastModified time.Time) (isUpdated bool, c
 	}
 }
 
-func getLastModified(fileURL string) (time.Time, error) {
+func GetLastModified(fileURL string) (time.Time, error) {
 	res, err := http.Head(fileURL)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("HTTP HEAD request error: %w", err)
@@ -334,7 +273,7 @@ func getLastModified(fileURL string) (time.Time, error) {
 	return lastModified, nil
 }
 
-func downloadFile(url string, downloadPath string) (downloadedPath string, err error) {
+func DownloadFile(url string, downloadPath string) (downloadedPath string, err error) {
 	if os.Getenv("s3_region") == "" && os.Getenv("s3_bucket") == "" {
 		// Create base directory
 		err = os.MkdirAll(filepath.Dir(downloadPath), 0777)
@@ -397,8 +336,8 @@ func downloadFile(url string, downloadPath string) (downloadedPath string, err e
 	}
 }
 
-func configure() (Config, error) {
-	var config Config
+func Configure() (model.Config, error) {
+	var config model.Config
 	_, localConfErr := os.Stat(filepath.Join(".", "conf", "config-local.yml"))
 	_, confErr := os.Stat(filepath.Join(".", "conf", "config-local.yml"))
 
@@ -425,11 +364,11 @@ func configure() (Config, error) {
 		viper.AddConfigPath(filepath.Join(".", "conf"))
 		viper.AutomaticEnv()
 		if err := viper.ReadInConfig(); err != nil {
-			return Config{}, fmt.Errorf("Read config file error: %w", err)
+			return model.Config{}, fmt.Errorf("Read config file error: %w", err)
 		}
 
 		if err := viper.Unmarshal(&config); err != nil {
-			return Config{}, fmt.Errorf("Unmarshal config file error: %w", err)
+			return model.Config{}, fmt.Errorf("Unmarshal config file error: %w", err)
 		}
 	}
 
@@ -464,11 +403,11 @@ func configure() (Config, error) {
 	return config, nil
 }
 
-func registerCurrentData4History(items []Item, db *gorm.DB) error {
+func RegisterCurrentData4History(items []model.Item, db *gorm.DB) error {
 	var insertRecords []interface{}
-	var histItem HistoricalItem
+	var histItem model.HistoricalItem
 	for _, item := range items {
-		histItem = HistoricalItem{}
+		histItem = model.HistoricalItem{}
 		histItem.Name = item.Name
 		histItem.Price = item.Price
 		histItem.URL = item.URL
@@ -479,3 +418,4 @@ func registerCurrentData4History(items []Item, db *gorm.DB) error {
 	}
 	return nil
 }
+
