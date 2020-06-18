@@ -6,7 +6,6 @@ import (
 	_ "github.com/jinzhu/gorm/dialects/mysql"
 )
 
-// Lambda用のバイナリファイルを作成する場合は関数名を任意の名前に変更
 func main() {
 	var pageOption bool
 	var storeOption bool
