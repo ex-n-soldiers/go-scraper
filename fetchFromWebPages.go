@@ -63,6 +63,43 @@ func getList(response *http.Response) ([]Item, error) {
 	return items, nil
 }
 
+func getMultiplePageList(baseUrl string) (items []Item, err error) {
+	page := 1
+
+	// golangではwhileの記法がないため、existsPageというフラグとして扱う変数を定義し、
+	// ループの終了条件を満たしたときにフラグをfalseにしてループを終了するようにしています。
+	existsPage := true
+	for existsPage == true {
+		u, err := url.Parse(baseUrl)
+		if err != nil {
+			return nil, fmt.Errorf("parse url error: %w", err)
+		}
+
+		// クエリストリングの組み立て
+		// Query関数によりクエリストリングをMap型に変換したデータを取得
+		q := u.Query()
+		// pageキーの値を上書き設定
+		q.Set("page", strconv.Itoa(page))
+		// 加工したクエリストリングを再設定
+		u.RawQuery = q.Encode()
+		// 設定したページの一覧の取得とパース
+		response, _ := getResponse(u.String())
+		l, err := getList(response)
+		if err != nil {
+			return nil, fmt.Errorf("get list error at %d page: %w", page, err)
+		}
+		if len(l) == 0 {
+			fmt.Printf("Item is not found: %s\n", u.String())
+			existsPage = false
+		} else {
+			// 引数で与えられたItemのsliceに、各ページで取得したItemのsliceを追加
+			items = append(items, l...)
+			page++
+		}
+	}
+	return items, nil
+}
+
 func fetchDetailPages(items []ItemMaster, downloadBasePath string) ([]ItemMaster, error) {
 	parsePage := func(response *http.Response, item ItemMaster) (ItemMaster, error) {
 		body := response.Body
