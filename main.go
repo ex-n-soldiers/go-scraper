@@ -13,12 +13,7 @@ func main() {
 		panic(err)
 	}
 
-	response, err := getResponse(conf.BaseUrl)
-	if err != nil {
-		panic(err)
-	}
-
-	items, err := getList(response)
+	items, err := getMultiplePageList(conf.BaseUrl)
 	if err != nil {
 		panic(err)
 	}
