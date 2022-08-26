@@ -71,7 +71,7 @@ func updateItemMaster(db *gorm.DB) error {
 			fmt.Printf("Index item is deleted: %s\n", deletedItem.Url)
 		}
 		if len(ids) > 0 {
-			if err := tx.Delete(&deletedItems, ids).Error; err != nil {
+			if err := tx.Delete(&deletedItems).Error; err != nil {
 				return fmt.Errorf("delete error: %w", err)
 			}
 		}
