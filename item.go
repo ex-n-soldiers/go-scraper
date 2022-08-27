@@ -30,6 +30,11 @@ type ItemMaster struct {
 	PdfDownloadPath     string
 }
 
+type  HistoricalItem struct {
+	Item
+	CreatedAt time.Time
+}
+
 func (ItemMaster) TableName() string {
 	return "item_master"
 }

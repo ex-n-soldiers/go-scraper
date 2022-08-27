@@ -23,6 +23,14 @@ func registerCurrentData(items []Item, db *gorm.DB) error {
 		return fmt.Errorf("bulk insert to latest_items error: %w", err)
 	}
 
+	var insertRecords4History []HistoricalItem
+	for _, item := range items {
+		insertRecords4History = append(insertRecords4History, HistoricalItem{Item: item})
+	}
+	if err := db.CreateInBatches(insertRecords4History, 100).Error; err != nil {
+		return fmt.Errorf("bulk insert to historical_item error: %w", err)
+	}
+
 	return nil
 }
 
