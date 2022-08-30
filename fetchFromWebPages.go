@@ -24,7 +24,6 @@ func getList(response *http.Response) ([]Item, error) {
 	body := response.Body
 
 	// レスポンスに含まれているリクエスト情報からリクエスト先のURLを取得
-	// 相対URLで書かれた詳細ページへのリンクを絶対URLで構成するために取得
 	requestURL := *response.Request.URL
 
 	var items []Item
@@ -34,7 +33,7 @@ func getList(response *http.Response) ([]Item, error) {
 		return nil, fmt.Errorf("get document error: %w", err)
 	}
 
-	// Find関数の引数でselectorを設定
+	// Find関数でテーブルの行要素を取得
 	tr := doc.Find("table tr")
 	notFoundMessage := "ページが存在しません"
 	if strings.Contains(doc.Text(), notFoundMessage) || tr.Size() == 0 {
